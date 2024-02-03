@@ -6,6 +6,7 @@ import { roleMiddleware } from "./middlewares/roleMiddleware.js";
 import cors from 'cors'
 import multer from 'multer'
 import path from "path"
+import jwt from 'jsonwebtoken'
 
 
 //порт на котором будет работать сервер
@@ -13,8 +14,6 @@ const PORT = 3000
 
 //сама переменная сервера
 const app = express()
-
-
 
 //чтобы сервер понимал json
 app.use(express.json())
@@ -43,18 +42,34 @@ app.post('/reg', register)
 //ветка логина
 app.post('/auth', auth)
 
-app.get("/requests/", async (req, res) => {
-    const data = await sql`select * from violations`
-    res.send(data[0])
+app.get("/requests/", roleMiddleware(['USER']), async (req, res) => {
+    const token = req.headers.authorization.split(' ')[1]
+    const {id} = jwt.verify(token, "SECRET_KEY")
+    const data = await sql`select * from violations where fk_user = ${id}`
+    res.send(data)
 })
 
-app.post("/add/", upload.single('image'), async (req, res) => {
+app.get("/undone_requests/", async (req, res) => {
+    const data = await sql`select * from violations where (status is null)`
+    res.send(data)
+})
+
+app.get("/done_requests/", async (req, res) => {
+    const data = await sql`select * from violations where (status is not null)`
+    res.send(data)
+})
+
+app.post("/add/", roleMiddleware(['USER']),upload.single('image'), async (req, res) => {
     const image = req.file.filename
     const { violation_date, violation_place, car_number} = req.body
     console.log(image)
-    const data = await sql`INSERT INTO violations(violation_date, violation_place, car_number, image) values(${violation_date}, ${violation_place}, ${car_number}, ${`http://localhost:3000/${image}`})`
+    console.log(req.headers.authorization);
+    const token = req.headers.authorization.split(' ')[1]
+    const {id} = jwt.verify(token, "SECRET_KEY")
+    const data = await sql`INSERT INTO violations(violation_date, violation_place, car_number, image, fk_user) values(${violation_date}, ${violation_place}, ${car_number}, ${`http://localhost:3000/${image}`}, ${id})`
     res.sendStatus(200)
 })
+
 
 //функция старта приложения
 const start = async () => {
@@ -63,10 +78,6 @@ const start = async () => {
     await sql`create table if not exists Roles(
         role varchar(100) unique primary key
     )`
-
-    //await sql`create table if not exists Statuses(
-    //    status varchar(100) unique primary key
-    //)`
 
     await sql`create table if not exists Users(
         id SERIAL PRIMARY KEY NOT NULL,
@@ -77,12 +88,14 @@ const start = async () => {
     )`
 
     await sql`CREATE TABLE IF NOT EXISTS violations (
-        id SERIAL PRIMARY KEY,
+        violation_id SERIAL PRIMARY KEY,
         date_of_appeal DATE DEFAULT NOW(),
         violation_date DATE,
         violation_place VARCHAR(50),
         car_number VARCHAR(15),
-        image varchar(100)
+        image varchar(100),
+        status varchar(15),
+        fk_user INTEGER REFERENCES users(id)
         )`
 
     //запустить в первый раз и больше не запускать
@@ -90,9 +103,6 @@ const start = async () => {
 
     //await sql`insert into Roles(role) values('USER')`
     //await sql`insert into Roles(role) values('ADMIN')`
-
-    //await sql`insert into Statuses(status) values('Accepted')`
-    //await sql`insert into Statuses(status) values('notAccepted')`
 
     //запустить сервак
     //(прослушивать порт на запросы)

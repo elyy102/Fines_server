@@ -9,6 +9,9 @@ export const roleMiddleware = (roles) => {
         if (req.method === "OPTIONS") next()
         
         try {
+            if (!req.headers.authorization) {
+                return res.status(403).send({message: "Пользователь не авторизован"})
+            }
             //из запроса достаешь токен
             const token = req.headers.authorization.split(' ')[1]
             //если в запросе нет токена возвращаем сразу пользователю ошибку и говоорим что он не авторизирован
@@ -16,7 +19,8 @@ export const roleMiddleware = (roles) => {
                 return res.status(403).send({message: "Пользователь не авторизован"})
             }
             //далее вытаскаиваем данные из токена которые мы записывали
-            const {role: userRole} = jwt.verify(token, "SECRET_KEY")
+            const {role: userRole, id} = jwt.verify(token, "SECRET_KEY")
+
 
             //проверяем есть ли у пользовтеля доступ к ветке проверяя есть ли его роль в массиве ролей
             let hasRole = false
